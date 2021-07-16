@@ -29,11 +29,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class BlockProcessor {
+    private final static HexFormat HF = HexFormat.of().withUpperCase();
 
     // arg[0] is the unicodedata directory
     public static void main(String[] args) {
@@ -128,16 +130,17 @@ public class BlockProcessor {
         }
     }
 
-    static int toInt(String hexStr) {
-        return Integer.parseUnsignedInt(hexStr, 16);
-    }
-
     static String toHexString(int cp) {
-        String ret = Integer.toUnsignedString(cp, 16).toUpperCase();
-        if (ret.length() < 4) {
-            ret = "0".repeat(4 - ret.length()) + ret;
+        String ret = HF.toHexDigits(cp);
+        if (cp < Character.MIN_SUPPLEMENTARY_CODE_POINT) {
+            return ret.substring(4);
+        } else if (cp < 0x100000) {
+            return ret.substring(3);
+        } else if (cp <= Character.MAX_CODE_POINT) {
+            return ret.substring(2);
+        } else {
+            throw new IllegalArgumentException("invalid code point");
         }
-        return ret;
     }
 
     static class Block {
@@ -152,8 +155,8 @@ public class BlockProcessor {
 
         Block (String prop) {
             this.prop = prop;
-            start = toInt(prop.replaceFirst("\\.\\..*", ""));
-            last = toInt(prop.replaceFirst(".*\\.\\.", "")
+            start = HexFormat.fromHexDigits(prop.replaceFirst("\\.\\..*", ""));
+            last = HexFormat.fromHexDigits(prop.replaceFirst(".*\\.\\.", "")
                             .replaceFirst(";.*", "").trim());
             blockName = prop.replaceFirst(".*; ", "").trim();
             blockNameSpace = blockName.toUpperCase();
@@ -163,15 +166,9 @@ public class BlockProcessor {
 
             // compatibility handling
             switch (blockNameUnderscore) {
-                case "GREEK_AND_COPTIC":
-                    blockNameUnderscore = "GREEK";
-                    break;
-                case "CYRILLIC_SUPPLEMENT":
-                    blockNameUnderscore = "CYRILLIC_SUPPLEMENTARY";
-                    break;
-                case "COMBINING_DIACRITICAL_MARKS_FOR_SYMBOLS":
-                    blockNameUnderscore ="COMBINING_MARKS_FOR_SYMBOLS";
-                    break;
+                case "GREEK_AND_COPTIC" -> blockNameUnderscore = "GREEK";
+                case "CYRILLIC_SUPPLEMENT" -> blockNameUnderscore = "CYRILLIC_SUPPLEMENTARY";
+                case "COMBINING_DIACRITICAL_MARKS_FOR_SYMBOLS" -> blockNameUnderscore = "COMBINING_MARKS_FOR_SYMBOLS";
             }
         }
 

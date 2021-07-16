@@ -29,11 +29,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ScriptProcessor {
+    private static final HexFormat HF = HexFormat.of().withUpperCase();
 
     // arg[0] is the unicodedata directory
     public static void main(String[] args) {
@@ -129,16 +131,17 @@ public class ScriptProcessor {
         }
     }
 
-    static int toInt(String hexStr) {
-        return Integer.parseUnsignedInt(hexStr, 16);
-    }
-
     static String toHexString(int cp) {
-        String ret = Integer.toUnsignedString(cp, 16).toUpperCase();
-        if (ret.length() < 4) {
-            ret = "0".repeat(4 - ret.length()) + ret;
+        String ret = HF.toHexDigits(cp);
+        if (cp < Character.MIN_SUPPLEMENTARY_CODE_POINT) {
+            return ret.substring(4);
+        } else if (cp < 0x100000) {
+            return ret.substring(3);
+        } else if (cp <= Character.MAX_CODE_POINT) {
+            return ret.substring(2);
+        } else {
+            throw new IllegalArgumentException("invalid code point");
         }
-        return ret;
     }
 
     static class Range implements Comparable<Range> {
@@ -158,9 +161,9 @@ public class ScriptProcessor {
 
         Range (String input) {
             input = input.replaceFirst("\\s#.*", "");
-            start = toInt(input.replaceFirst("[\\s.].*", ""));
+            start = HexFormat.fromHexDigits(input.replaceFirst("[\\s.].*", ""));
             last = input.contains("..") ?
-                    toInt(input.replaceFirst(".*\\.\\.", "")
+                    HexFormat.fromHexDigits(input.replaceFirst(".*\\.\\.", "")
                             .replaceFirst(";.*", "").trim())
                     : start;
             prop = input.replaceFirst(".* ; ", "");
