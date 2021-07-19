@@ -25,7 +25,9 @@
 
 package com.oracle;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -38,97 +40,95 @@ public class ScriptProcessor {
     private static final HexFormat HF = HexFormat.of().withUpperCase();
 
     // arg[0] is the unicodedata directory
-    public static void main(String[] args) {
-        try {
-            final var last = new Range[1]; // last script range
-            last[0] = new Range(0, 0, "", "");
+    public static void main(String[] args) throws Exception {
+        PrintStream out = args.length > 1 ? new PrintStream("out" + File.separator + args[1]) : System.out;
 
-            var scripts = Files.lines(Paths.get(args[0], "Scripts.txt"))
-                    .filter(Predicate.not(l -> l.startsWith("#") || l.isBlank()))
-                    .map(Range::new)
-                    .sorted()
-                    .flatMap(r -> {
-                        Range unkRange = null;
-                        if (last[0].last < r.start - 1) {
-                            // need to insert UNKNOWN
-                            unkRange = new Range(last[0].last + 1, r.start - 1, "UNKNOWN", "Unknown");
-                        }
-                        last[0] = r;
-                        return unkRange != null ? Stream.of(unkRange, r) : Stream.of(r);
-                    })
-                    .collect(ArrayList<Range>::new,
-                            (list, r) -> {
-                                // collapsing consecutive same script ranges
-                                int lastIndex = list.size() - 1;
-                                if (lastIndex >= 0) {
-                                    Range lastRange = list.get(lastIndex);
-                                    if (lastRange.script.equals(r.script)) {
-                                        list.set(lastIndex, new Range(lastRange.start, r.last, r.script, r.name));
-                                        return;
-                                    }
+        final var last = new Range[1]; // last script range
+        last[0] = new Range(0, 0, "", "");
+
+        var scripts = Files.lines(Paths.get(args[0], "Scripts.txt"))
+                .filter(Predicate.not(l -> l.startsWith("#") || l.isBlank()))
+                .map(Range::new)
+                .sorted()
+                .flatMap(r -> {
+                    Range unkRange = null;
+                    if (last[0].last < r.start - 1) {
+                        // need to insert UNKNOWN
+                        unkRange = new Range(last[0].last + 1, r.start - 1, "UNKNOWN", "Unknown");
+                    }
+                    last[0] = r;
+                    return unkRange != null ? Stream.of(unkRange, r) : Stream.of(r);
+                })
+                .collect(ArrayList<Range>::new,
+                        (list, r) -> {
+                            // collapsing consecutive same script ranges
+                            int lastIndex = list.size() - 1;
+                            if (lastIndex >= 0) {
+                                Range lastRange = list.get(lastIndex);
+                                if (lastRange.script.equals(r.script)) {
+                                    list.set(lastIndex, new Range(lastRange.start, r.last, r.script, r.name));
+                                    return;
                                 }
+                            }
+                            list.add(r);
+                        },
+                        ArrayList::addAll);
+                // Add the last UNKNOWN
+                scripts.add(scripts.size(),
+                        new Range(scripts.get(scripts.size() - 1).last + 1, 0x10FFFF, "UNKNOWN", "Unknown"));
+
+        // scriptStarts
+        scripts.stream()
+                .map(Range::printScriptStarts)
+                .forEach(out::println);
+
+        // scripts
+        scripts.stream()
+                .map(Range::printScripts)
+                .forEach(out::println);
+
+        // constants
+        var newScripts = scripts.stream()
+                .filter(r -> {
+                    try {
+                        Character.UnicodeScript.forName(r.script);
+                    } catch (IllegalArgumentException iae) {
+                        return true;
+                    }
+                    return false;
+                })
+                .collect(ArrayList<Range>::new,
+                        (list, r) -> {
+                            if (list.stream().noneMatch(s -> s.script.equals(r.script))) {
                                 list.add(r);
-                            },
-                            ArrayList::addAll);
-                    // Add the last UNKNOWN
-                    scripts.add(scripts.size(),
-                            new Range(scripts.get(scripts.size() - 1).last + 1, 0x10FFFF, "UNKNOWN", "Unknown"));
+                            }
+                        },
+                        ArrayList::addAll);
 
-            // scriptStarts
-            scripts.stream()
-                    .map(Range::printScriptStarts)
-                    .forEach(System.out::println);
+        newScripts.forEach(r -> {
+            String fieldDesc =
+                    " ".repeat(8) + "/**\n" +
+                            " ".repeat(9) + "* Unicode script \"" + r.name + "\".\n" +
+                            " ".repeat(9) + "* @since XX\n" +
+                            " ".repeat(9) + "*/\n" +
+                            " ".repeat(8) + r.script + ",\n";
+            out.println(fieldDesc);
+        });
 
-            // scripts
-            scripts.stream()
-                    .map(Range::printScripts)
-                    .forEach(System.out::println);
+        // aliases
+        var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
+                .filter(l -> l.startsWith("sc ;"))
+                .map(l -> l.replaceFirst("sc ; ", ""))
+                .collect(Collectors.toList());
+        newScripts.forEach(s -> aliases.stream()
+                .filter(a -> a.endsWith(s.prop))
+                .map(a -> " ".repeat(12) +
+                        "aliases.put(\"" +
+                        a.replaceFirst(" .*", "").toUpperCase() +
+                        "\", " + s.script + ");")
+                .findAny()
+                .ifPresent(out::println));
 
-            // constants
-            var newScripts = scripts.stream()
-                    .filter(r -> {
-                        try {
-                            Character.UnicodeScript.forName(r.script);
-                        } catch (IllegalArgumentException iae) {
-                            return true;
-                        }
-                        return false;
-                    })
-                    .collect(ArrayList<Range>::new,
-                            (list, r) -> {
-                                if (list.stream().noneMatch(s -> s.script.equals(r.script))) {
-                                    list.add(r);
-                                }
-                            },
-                            ArrayList::addAll);
-
-            newScripts.forEach(r -> {
-                String fieldDesc =
-                        " ".repeat(8) + "/**\n" +
-                                " ".repeat(9) + "* Unicode script \"" + r.name + "\".\n" +
-                                " ".repeat(9) + "* @since XX\n" +
-                                " ".repeat(9) + "*/\n" +
-                                " ".repeat(8) + r.script + ",\n";
-                System.out.println(fieldDesc);
-            });
-
-            // aliases
-            var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
-                    .filter(l -> l.startsWith("sc ;"))
-                    .map(l -> l.replaceFirst("sc ; ", ""))
-                    .collect(Collectors.toList());
-            newScripts.forEach(s -> aliases.stream()
-                    .filter(a -> a.endsWith(s.prop))
-                    .map(a -> " ".repeat(12) +
-                            "aliases.put(\"" +
-                            a.replaceFirst(" .*", "").toUpperCase() +
-                            "\", " + s.script + ");")
-                    .findAny()
-                    .ifPresent(System.out::println));
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     static String toHexString(int cp) {

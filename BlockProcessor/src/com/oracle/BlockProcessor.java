@@ -25,7 +25,10 @@
 
 package com.oracle;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -38,96 +41,93 @@ public class BlockProcessor {
     private final static HexFormat HF = HexFormat.of().withUpperCase();
 
     // arg[0] is the unicodedata directory
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         final var last = new Block[1]; // last script range
+        PrintStream out = args.length > 1 ? new PrintStream("out" + File.separator + args[1]) : System.out;
 
-        try {
-            var blocks = Files.lines(Paths.get(args[0], "Blocks.txt"))
-                    .filter(Predicate.not(l -> l.startsWith("#") || l.isBlank()))
-                    .map(Block::new)
-                    .flatMap(b -> {
-                        Stream<Block> flat;
-                        if (last[0] != null && last[0].last != b.start - 1) {
-                            flat = Stream.of(new Block(
-                                    toHexString(last[0].last + 1) + ".." +
-                                            toHexString(b.start - 1) + "; unassigned"
-                            ), b);
-                        } else {
-                            flat = Stream.of(b);
-                        }
-                        last[0] = b;
-                        return flat;
-                    })
-                    .collect(Collectors.toList());
+        var blocks = Files.lines(Paths.get(args[0], "Blocks.txt"))
+                .filter(Predicate.not(l -> l.startsWith("#") || l.isBlank()))
+                .map(Block::new)
+                .flatMap(b -> {
+                    Stream<Block> flat;
+                    if (last[0] != null && last[0].last != b.start - 1) {
+                        flat = Stream.of(new Block(
+                                toHexString(last[0].last + 1) + ".." +
+                                        toHexString(b.start - 1) + "; unassigned"
+                        ), b);
+                    } else {
+                        flat = Stream.of(b);
+                    }
+                    last[0] = b;
+                    return flat;
+                })
+                .collect(Collectors.toList());
 
-            // blockStarts
-            blocks.stream()
-                    .map(Block::blockStarts)
-                    .forEach(System.out::println);
+        // blockStarts
+        blocks.stream()
+                .map(Block::blockStarts)
+                .forEach(out::println);
 
-            // blocks
-            blocks.stream()
-                    .map(Block::blocks)
-                    .forEach(System.out::println);
+        // blocks
+        blocks.stream()
+                .map(Block::blocks)
+                .forEach(out::println);
 
-            // constants
-            var newBlocks = blocks.stream()
-                    .filter(b -> {
-                        try {
-                            Character.UnicodeBlock.forName(b.blockNameUnderscore);
-                        } catch (IllegalArgumentException iae) {
-                            return true;
-                        }
-                        return false;
-                    })
-                    .filter(b -> b.assigned)
-                    .collect(ArrayList<Block>::new,
-                            (list, b) -> {
-                                if (list.stream().noneMatch(s -> s.blockName.equals(b.blockName))) {
-                                    list.add(b);
-                                }
-                            },
-                            ArrayList::addAll);
+        // constants
+        var newBlocks = blocks.stream()
+                .filter(b -> {
+                    try {
+                        Character.UnicodeBlock.forName(b.blockNameUnderscore);
+                    } catch (IllegalArgumentException iae) {
+                        return true;
+                    }
+                    return false;
+                })
+                .filter(b -> b.assigned)
+                .collect(ArrayList<Block>::new,
+                        (list, b) -> {
+                            if (list.stream().noneMatch(s -> s.blockName.equals(b.blockName))) {
+                                list.add(b);
+                            }
+                        },
+                        ArrayList::addAll);
 
-            newBlocks.forEach(b -> {
-                String fieldDesc =
-                        " ".repeat(8) + "/**\n" +
-                                " ".repeat(9) + "* Constant for the \"" + b.blockName + "\" Unicode\n" +
-                                " ".repeat(9) + "* character block.\n" +
-                                " ".repeat(9) + "* @since XX\n" +
-                                " ".repeat(9) + "*/\n" +
-                                " ".repeat(8) + "public static final UnicodeBlock " +
-                                b.blockNameUnderscore + " =\n" +
-                                " ".repeat(12) + "new UnicodeBlock(\"" + b.blockNameUnderscore + "\"" +
-                                (!b.blockNameUnderscore.equals(b.blockNameSpace) ? ",\n" +
-                                    " ".repeat(29) + "\"" + b.blockNameSpace + "\"" : "") +
-                                (!b.blockNameUnderscore.equals(b.blockNameNoSpace) ? ",\n" +
-                                    " ".repeat(29) + "\"" + b.blockNameNoSpace + "\"" : "") +
-                                ");\n";
+        newBlocks.forEach(b -> {
+            String fieldDesc =
+                    " ".repeat(8) + "/**\n" +
+                            " ".repeat(9) + "* Constant for the \"" + b.blockName + "\" Unicode\n" +
+                            " ".repeat(9) + "* character block.\n" +
+                            " ".repeat(9) + "* @since XX\n" +
+                            " ".repeat(9) + "*/\n" +
+                            " ".repeat(8) + "public static final UnicodeBlock " +
+                            b.blockNameUnderscore + " =\n" +
+                            " ".repeat(12) + "new UnicodeBlock(\"" + b.blockNameUnderscore + "\"" +
+                            (!b.blockNameUnderscore.equals(b.blockNameSpace) ? ",\n" +
+                                " ".repeat(29) + "\"" + b.blockNameSpace + "\"" : "") +
+                            (!b.blockNameUnderscore.equals(b.blockNameNoSpace) ? ",\n" +
+                                " ".repeat(29) + "\"" + b.blockNameNoSpace + "\"" : "") +
+                            ");\n";
 
-                System.out.println(fieldDesc);
-            });
+            out.println(fieldDesc);
+        });
 /*
-            // aliases
-            var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
-                    .filter(l -> l.startsWith("sc ;"))
-                    .map(l -> l.replaceFirst("sc ; ", ""))
-                    .collect(Collectors.toList());
-            newScripts.stream()
-                    .forEach(s -> {
-                        aliases.stream()
-                                .filter(a -> a.endsWith(s.prop))
-                                .map(a -> " ".repeat(12) +
-                                        "aliases.put(\"" +
-                                        a.replaceFirst(" .*", "").toUpperCase() +
-                                        "\", " + s.script + ");")
-                                .findAny()
-                                .ifPresent(System.out::println);
-                    });
+        // aliases
+        var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
+                .filter(l -> l.startsWith("sc ;"))
+                .map(l -> l.replaceFirst("sc ; ", ""))
+                .collect(Collectors.toList());
+        newScripts.stream()
+                .forEach(s -> {
+                    aliases.stream()
+                            .filter(a -> a.endsWith(s.prop))
+                            .map(a -> " ".repeat(12) +
+                                    "aliases.put(\"" +
+                                    a.replaceFirst(" .*", "").toUpperCase() +
+                                    "\", " + s.script + ");")
+                            .findAny()
+                            .ifPresent(System.out::println);
+                });
 */
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     static String toHexString(int cp) {
