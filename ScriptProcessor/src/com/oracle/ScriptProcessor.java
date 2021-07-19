@@ -26,7 +26,6 @@
 package com.oracle;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -194,10 +193,6 @@ public class ScriptProcessor {
                     "," + " ".repeat(25 - script.length()) + "// " +
                     startStr +
                     (start != last ? ".." + lastStr : "");
-        }
-
-        String printDefinitions() {
-            return "/* " + name + " */";
         }
 
         @Override

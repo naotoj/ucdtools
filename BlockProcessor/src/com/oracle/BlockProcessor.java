@@ -26,9 +26,7 @@
 package com.oracle;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.PrintStream;
-import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -110,24 +108,6 @@ public class BlockProcessor {
 
             out.println(fieldDesc);
         });
-/*
-        // aliases
-        var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
-                .filter(l -> l.startsWith("sc ;"))
-                .map(l -> l.replaceFirst("sc ; ", ""))
-                .collect(Collectors.toList());
-        newScripts.stream()
-                .forEach(s -> {
-                    aliases.stream()
-                            .filter(a -> a.endsWith(s.prop))
-                            .map(a -> " ".repeat(12) +
-                                    "aliases.put(\"" +
-                                    a.replaceFirst(" .*", "").toUpperCase() +
-                                    "\", " + s.script + ");")
-                            .findAny()
-                            .ifPresent(System.out::println);
-                });
-*/
     }
 
     static String toHexString(int cp) {
