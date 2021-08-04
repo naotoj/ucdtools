@@ -38,7 +38,7 @@ import java.util.stream.Stream;
 public class BlockProcessor {
     private final static HexFormat HF = HexFormat.of().withUpperCase();
 
-    // arg[0] is the unicodedata directory
+    // arg[0] is the unicode data directory
     public static void main(String[] args) throws Exception {
         final var last = new Block[1]; // last script range
         PrintStream out = args.length > 1 ? new PrintStream("out" + File.separator + args[1]) : System.out;
