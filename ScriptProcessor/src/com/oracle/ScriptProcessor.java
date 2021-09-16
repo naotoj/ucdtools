@@ -40,7 +40,7 @@ public class ScriptProcessor {
 
     // arg[0] is the unicode data directory
     public static void main(String[] args) throws Exception {
-        PrintStream out = args.length > 1 ? new PrintStream("out" + File.separator + args[1]) : System.out;
+        PrintStream out = args.length > 2 ? new PrintStream("out" + File.separator + args[2]) : System.out;
 
         final var last = new Range[1]; // last script range
         last[0] = new Range(0, 0, "", "");
@@ -76,16 +76,6 @@ public class ScriptProcessor {
                 scripts.add(scripts.size(),
                         new Range(scripts.get(scripts.size() - 1).last + 1, 0x10FFFF, "UNKNOWN", "Unknown"));
 
-        // scriptStarts
-        scripts.stream()
-                .map(Range::printScriptStarts)
-                .forEach(out::println);
-
-        // scripts
-        scripts.stream()
-                .map(Range::printScripts)
-                .forEach(out::println);
-
         // constants
         var newScripts = scripts.stream()
                 .filter(r -> {
@@ -108,11 +98,46 @@ public class ScriptProcessor {
             String fieldDesc =
                     " ".repeat(8) + "/**\n" +
                             " ".repeat(9) + "* Unicode script \"" + r.name + "\".\n" +
-                            " ".repeat(9) + "* @since XX\n" +
+                            " ".repeat(9) + "* @since " + args[1] + "\n" +
                             " ".repeat(9) + "*/\n" +
                             " ".repeat(8) + r.script + ",\n";
             out.println(fieldDesc);
         });
+
+        // filler
+        out.print(
+                """
+                        /**
+                         * Unicode script "Unknown".
+                         */
+                        UNKNOWN;
+                      
+                        private static final int[] scriptStarts = {      
+                """);
+
+        // scriptStarts
+        scripts.stream()
+                .map(Range::printScriptStarts)
+                .forEach(out::println);
+
+        // filler
+        out.print(
+                """
+                        };
+
+                        private static final Character.UnicodeScript[] scripts = {
+                """);
+
+        // scripts
+        scripts.stream()
+                .map(Range::printScripts)
+                .forEach(out::println);
+
+        // filler
+        out.println(
+                """
+                    };
+                """);
 
         // aliases
         var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
@@ -174,10 +199,10 @@ public class ScriptProcessor {
             String startStr = toHexString(start);
             String lastStr = toHexString(last);
 
-            return "        0x" +
+            return "            0x" +
                     startStr +
                     "," +
-                    " ".repeat(7 - startStr.length()) +
+                    " ".repeat(11 - startStr.length()) +
                     "// " +
                     startStr +
                     (start != last ? ".." + lastStr + "; " : " ".repeat(lastStr.length() + 2) + "; ") +
@@ -188,9 +213,9 @@ public class ScriptProcessor {
             String startStr = toHexString(start);
             String lastStr = toHexString(last);
 
-            return " ".repeat(8) +
+            return " ".repeat(12) +
                     script +
-                    "," + " ".repeat(25 - script.length()) + "// " +
+                    "," + " ".repeat(29 - script.length()) + "// " +
                     startStr +
                     (start != last ? ".." + lastStr : "");
         }
