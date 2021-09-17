@@ -30,6 +30,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -133,26 +134,36 @@ public class ScriptProcessor {
                 .map(Range::printScripts)
                 .forEach(out::println);
 
-        // filler
-        out.println(
-                """
-                    };
-                """);
-
         // aliases
         var aliases = Files.lines(Paths.get(args[0], "PropertyValueAliases.txt"))
                 .filter(l -> l.startsWith("sc ;"))
                 .map(l -> l.replaceFirst("sc ; ", ""))
                 .collect(Collectors.toList());
-        newScripts.forEach(s -> aliases.stream()
-                .filter(a -> a.endsWith(s.prop))
-                .map(a -> " ".repeat(12) +
-                        "aliases.put(\"" +
-                        a.replaceFirst(" .*", "").toUpperCase() +
-                        "\", " + s.script + ");")
-                .findAny()
-                .ifPresent(out::println));
 
+        // filler
+        out.printf(
+                """
+                    };
+                    
+                    private static final HashMap<String, Character.UnicodeScript> aliases;
+                    static {
+                        aliases = new HashMap<>((int)(%d / 0.75f + 1.0f)); 
+                """, aliases.size() + 1);
+
+        scripts.stream()
+                .map(s -> aliases.stream()
+                        .filter(a -> a.endsWith(s.prop))
+                        .map(a -> " ".repeat(12) +
+                                "aliases.put(\"" +
+                                a.replaceFirst(" .*", "").toUpperCase() +
+                                "\", " + s.script + ");")
+                                .findAny()
+                                .orElse("")
+                        )
+                .filter(Predicate.not(String::isEmpty))
+                .distinct()
+                .sorted()
+                .forEach(out::println);
     }
 
     static String toHexString(int cp) {
